@@ -103,6 +103,44 @@ final class MountSambaCoreTests: XCTestCase {
         XCTAssertNil(mounter.requests[0].credential)
     }
 
+    func testVolumesMountPointPermissionErrorFallsThroughToNetFS() {
+        let error = NSError(
+            domain: NSCocoaErrorDomain,
+            code: CocoaError.fileWriteNoPermission.rawValue
+        )
+
+        XCTAssertTrue(
+            FileManagerMountPointPreparer.shouldLetNetFSCreateVolumesMountPoint(
+                path: "/Volumes/cornelia",
+                error: error
+            )
+        )
+        XCTAssertFalse(
+            FileManagerMountPointPreparer.shouldLetNetFSCreateVolumesMountPoint(
+                path: "/tmp/cornelia",
+                error: error
+            )
+        )
+    }
+
+    func testMountPointPreparationErrorFailsBeforeNetFS() {
+        let config = sampleConfig(mountPoint: "/tmp/not-allowed", account: nil)
+        let mounter = FakeMounter()
+        let service = MountService(
+            statusProvider: FakeStatusProvider(),
+            mounter: mounter,
+            credentials: FakeCredentialStore(),
+            mountPointPreparer: FakeMountPointPreparer(
+                error: NSError(domain: NSCocoaErrorDomain, code: CocoaError.fileReadNoSuchFile.rawValue)
+            )
+        )
+
+        let status = service.mount(config)
+
+        XCTAssertEqual(status.status, .failed)
+        XCTAssertTrue(mounter.requests.isEmpty)
+    }
+
     func testMissingCredentialFailsWithoutStoppingOtherMounts() throws {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -197,4 +235,14 @@ private struct FakeCredentialStore: CredentialStore {
     }
 
     func setPassword(_ password: String, host: String, share: String, account: String) throws {}
+}
+
+private struct FakeMountPointPreparer: MountPointPreparing {
+    var error: Error?
+
+    func prepareMountPoint(_ path: String) throws {
+        if let error {
+            throw error
+        }
+    }
 }

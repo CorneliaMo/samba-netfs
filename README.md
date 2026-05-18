@@ -156,6 +156,7 @@ The daemon writes:
 ## Behavior
 
 - Missing mount point directories are created automatically.
+- If a direct `/Volumes/<name>` mount point cannot be pre-created because of macOS permissions, `mount-samba` still calls NetFS and lets the system mount workflow handle it.
 - Already mounted mount points are skipped.
 - A failed share does not stop other shares from being checked or mounted.
 - In polling mode, each config is retried according to its own `pollIntervalSeconds`.

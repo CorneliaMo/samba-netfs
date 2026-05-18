@@ -28,11 +28,62 @@ public struct ShareStatus: Codable, Equatable, Sendable {
     }
 }
 
+public protocol MountPointPreparing {
+    func prepareMountPoint(_ path: String) throws
+}
+
+public final class FileManagerMountPointPreparer: MountPointPreparing {
+    private let fileManager: FileManager
+
+    public init(fileManager: FileManager = .default) {
+        self.fileManager = fileManager
+    }
+
+    public func prepareMountPoint(_ path: String) throws {
+        var isDirectory: ObjCBool = false
+        if fileManager.fileExists(atPath: path, isDirectory: &isDirectory) {
+            if !isDirectory.boolValue {
+                throw CocoaError(.fileWriteFileExists)
+            }
+            return
+        }
+
+        do {
+            try fileManager.createDirectory(atPath: path, withIntermediateDirectories: true)
+        } catch {
+            if Self.shouldLetNetFSCreateVolumesMountPoint(path: path, error: error) {
+                return
+            }
+            throw error
+        }
+    }
+
+    static func shouldLetNetFSCreateVolumesMountPoint(path: String, error: Error) -> Bool {
+        guard isDirectVolumesChild(path) else {
+            return false
+        }
+
+        let nsError = error as NSError
+        if nsError.domain == NSCocoaErrorDomain && nsError.code == CocoaError.fileWriteNoPermission.rawValue {
+            return true
+        }
+        if nsError.domain == NSPOSIXErrorDomain && nsError.code == 13 {
+            return true
+        }
+        return false
+    }
+
+    private static func isDirectVolumesChild(_ path: String) -> Bool {
+        let components = URL(fileURLWithPath: path).standardizedFileURL.pathComponents
+        return components.count == 3 && components[0] == "/" && components[1] == "Volumes"
+    }
+}
+
 public final class MountService {
     private let statusProvider: MountStatusProviding
     private let mounter: NetworkMounter
     private let credentials: CredentialStore
-    private let fileManager: FileManager
+    private let mountPointPreparer: MountPointPreparing
 
     public init(
         statusProvider: MountStatusProviding,
@@ -43,7 +94,19 @@ public final class MountService {
         self.statusProvider = statusProvider
         self.mounter = mounter
         self.credentials = credentials
-        self.fileManager = fileManager
+        self.mountPointPreparer = FileManagerMountPointPreparer(fileManager: fileManager)
+    }
+
+    public init(
+        statusProvider: MountStatusProviding,
+        mounter: NetworkMounter,
+        credentials: CredentialStore,
+        mountPointPreparer: MountPointPreparing
+    ) {
+        self.statusProvider = statusProvider
+        self.mounter = mounter
+        self.credentials = credentials
+        self.mountPointPreparer = mountPointPreparer
     }
 
     public func statuses(for configs: [LoadedConfig]) -> [ShareStatus] {
@@ -66,7 +129,7 @@ public final class MountService {
         }
 
         do {
-            try ensureMountPoint(config.mountPoint)
+            try mountPointPreparer.prepareMountPoint(config.mountPoint)
             let remoteURL = try config.smbURL()
             let credential = try credential(for: config)
             try mounter.mount(MountRequest(remoteURL: remoteURL, mountPoint: config.mountPoint, credential: credential))
@@ -84,16 +147,5 @@ public final class MountService {
             throw CredentialError.missing(host: config.host, share: config.share, account: account)
         }
         return Credential(account: account, password: password)
-    }
-
-    private func ensureMountPoint(_ path: String) throws {
-        var isDirectory: ObjCBool = false
-        if fileManager.fileExists(atPath: path, isDirectory: &isDirectory) {
-            if !isDirectory.boolValue {
-                throw CocoaError(.fileWriteFileExists)
-            }
-            return
-        }
-        try fileManager.createDirectory(atPath: path, withIntermediateDirectories: true)
     }
 }
