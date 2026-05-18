@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/CorneliaMo/samba-netfs/master/schemas/samba-config.schema.json",
+  "title": "SambaNetFS Share Configuration",
+  "description": "A single SMB/Samba share configuration for the mount-samba CLI.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "name",
+    "host",
+    "share",
+    "pollIntervalSeconds",
+    "mountPoint"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional JSON Schema URI for editor validation."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Friendly display name shown by mount-samba."
+    },
+    "host": {
+      "type": "string",
+      "minLength": 1,
+      "description": "SMB server host name or IP address.",
+      "examples": [
+        "nas.local",
+        "192.0.2.10"
+      ]
+    },
+    "share": {
+      "type": "string",
+      "minLength": 1,
+      "description": "SMB share name.",
+      "examples": [
+        "media",
+        "documents"
+      ]
+    },
+    "path": {
+      "type": "string",
+      "description": "Optional subdirectory inside the share. Do not include a leading slash.",
+      "pattern": "^[^/].*|^$",
+      "examples": [
+        "tv/season-1"
+      ]
+    },
+    "pollIntervalSeconds": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Per-share polling interval used by run and start commands."
+    },
+    "mountPoint": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Local POSIX directory used as the mount point.",
+      "examples": [
+        "/Volumes/MediaNAS"
+      ]
+    },
+    "account": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional Keychain account name. Omit for guest or anonymous SMB behavior."
+    }
+  }
+}

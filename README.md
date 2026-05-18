@@ -61,6 +61,7 @@ Create one `.json` file per Samba share:
 
 ```json
 {
+  "$schema": "https://raw.githubusercontent.com/CorneliaMo/samba-netfs/master/schemas/samba-config.schema.json",
   "name": "Media NAS",
   "host": "nas.local",
   "share": "media",
@@ -85,6 +86,16 @@ Optional fields:
 - `account`: Keychain account name
 
 If `account` is omitted, `mount-samba` does not pass credentials to NetFS and relies on guest or anonymous SMB behavior.
+
+An example config is available at [`examples/media-nas.json`](examples/media-nas.json).
+
+The JSON Schema is available at [`schemas/samba-config.schema.json`](schemas/samba-config.schema.json). Use the schema URL in your configs if your editor supports JSON Schema validation:
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/CorneliaMo/samba-netfs/master/schemas/samba-config.schema.json"
+}
+```
 
 ## Credentials
 

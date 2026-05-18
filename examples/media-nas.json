@@ -1,0 +1,10 @@
+{
+  "$schema": "../schemas/samba-config.schema.json",
+  "name": "Media NAS",
+  "host": "nas.local",
+  "share": "media",
+  "path": "tv",
+  "pollIntervalSeconds": 60,
+  "mountPoint": "/Volumes/MediaNAS",
+  "account": "alice"
+}
