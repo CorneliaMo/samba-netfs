@@ -127,7 +127,7 @@ public final class FinderNetworkMounter: NetworkMounter {
         var components = URLComponents(url: request.remoteURL, resolvingAgainstBaseURL: false) ?? URLComponents()
         components.scheme = "smb"
         components.host = request.remoteURL.host
-        components.percentEncodedPath = request.remoteURL.percentEncodedPath
+        components.percentEncodedPath = components.percentEncodedPath.isEmpty ? request.remoteURL.path : components.percentEncodedPath
         components.percentEncodedUser = credential.account.addingPercentEncoding(withAllowedCharacters: .urlUserAllowed)
 
         let allowedPassword = CharacterSet.urlPasswordAllowed.subtracting(CharacterSet(charactersIn: ":@"))
