@@ -75,6 +75,7 @@ int CNetFSMountURL(
     }
 
     CFDictionarySetValue(options, kNAUIOptionKey, kNAUIOptionNoUI);
+    CFDictionarySetValue(options, kNetFSMountAtMountDirKey, kCFBooleanTrue);
 
     CFStringRef userString = NULL;
     CFStringRef passwordString = NULL;
