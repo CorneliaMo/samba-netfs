@@ -76,7 +76,9 @@ public final class ShellMountStatusProvider: MountStatusProviding {
             guard let output = String(data: data, encoding: .utf8) else {
                 return []
             }
-            return Set(output.compactMap(Self.parseMountPoint))
+            return Set(output.split(separator: "\n").compactMap { line in
+                Self.parseMountPoint(from: String(line))
+            })
         }
     }
 

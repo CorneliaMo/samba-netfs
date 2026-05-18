@@ -15,8 +15,6 @@ public enum DaemonState: Equatable {
 public enum DaemonError: LocalizedError, Equatable {
     case unsupported
     case alreadyRunning(Int32)
-    case forkFailed
-    case setsidFailed
     case missingExecutable
 
     public var errorDescription: String? {
@@ -25,10 +23,6 @@ public enum DaemonError: LocalizedError, Equatable {
             return "daemon mode is only available on macOS and Unix-like systems"
         case let .alreadyRunning(pid):
             return "daemon is already running with PID \(pid)"
-        case .forkFailed:
-            return "fork failed"
-        case .setsidFailed:
-            return "setsid failed"
         case .missingExecutable:
             return "cannot determine current executable path"
         }
@@ -82,31 +76,26 @@ public final class DaemonController {
 
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
 
-        #if os(macOS) || os(Linux)
-        let child = fork()
-        if child < 0 {
-            throw DaemonError.forkFailed
-        }
-        if child > 0 {
-            try "\(child)\n".write(to: pidFile, atomically: true, encoding: .utf8)
-            return child
-        }
-
-        if setsid() < 0 {
-            exit(1)
-        }
-
-        freopen(logFile.path, "a", stdout)
-        freopen(logFile.path, "a", stderr)
-
         guard let executable = Bundle.main.executablePath else {
-            exit(1)
+            throw DaemonError.missingExecutable
         }
-        execl(executable, executable, "run", "--config-dir", configDirectory.path, nil)
-        exit(1)
-        #else
-        throw DaemonError.unsupported
-        #endif
+
+        if !fileManager.fileExists(atPath: logFile.path) {
+            fileManager.createFile(atPath: logFile.path, contents: nil)
+        }
+        let logHandle = try FileHandle(forWritingTo: logFile)
+        try logHandle.seekToEnd()
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = ["run", "--config-dir", configDirectory.path]
+        process.standardOutput = logHandle
+        process.standardError = logHandle
+        try process.run()
+
+        let pid = process.processIdentifier
+        try "\(pid)\n".write(to: pidFile, atomically: true, encoding: .utf8)
+        return pid
     }
 
     private func readPID() -> Int32? {
