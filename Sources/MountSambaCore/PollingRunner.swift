@@ -51,5 +51,6 @@ public final class PollingRunner {
             line += ": \(message)"
         }
         logger(line)
+        fflush(stdout)
     }
 }

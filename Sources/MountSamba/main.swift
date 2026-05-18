@@ -76,6 +76,7 @@ struct Run: ParsableCommand {
     @OptionGroup var options: ConfigOptions
 
     mutating func run() throws {
+        configureLineBufferedLogging()
         let configs = try ConfigLoader().load(from: options.directoryURL)
         RunSignal.install()
         PollingRunner(
@@ -208,4 +209,9 @@ private struct RuntimeError: LocalizedError {
     var errorDescription: String? {
         message
     }
+}
+
+private func configureLineBufferedLogging() {
+    _ = setvbuf(stdout, nil, _IOLBF, 0)
+    _ = setvbuf(stderr, nil, _IOLBF, 0)
 }
