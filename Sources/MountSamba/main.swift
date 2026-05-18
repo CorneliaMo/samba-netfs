@@ -12,7 +12,7 @@ import Glibc
 struct MountSamba: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "mount-samba",
-        abstract: "Mount SMB/Samba shares using macOS NetFS.",
+        abstract: "Mount SMB/Samba shares using macOS system mount services.",
         subcommands: [
             Show.self,
             Mount.self,
@@ -155,7 +155,7 @@ struct SetCredential: ParsableCommand {
 private func makeService() -> MountService {
     MountService(
         statusProvider: ShellMountStatusProvider(),
-        mounter: NetFSNetworkMounter(),
+        mounter: FinderNetworkMounter(),
         credentials: KeychainCredentialStore()
     )
 }

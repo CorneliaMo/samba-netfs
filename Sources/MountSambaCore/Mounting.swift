@@ -23,10 +23,16 @@ public protocol MountStatusProviding {
 
 public enum MountError: LocalizedError, Equatable {
     case netFSFailed(String)
+    case finderFailed(String)
+    case mountVerificationFailed(String)
 
     public var errorDescription: String? {
         switch self {
         case let .netFSFailed(message):
+            return message
+        case let .finderFailed(message):
+            return message
+        case let .mountVerificationFailed(message):
             return message
         }
     }
@@ -53,6 +59,87 @@ public final class NetFSNetworkMounter: NetworkMounter {
             let message = errorPointer.map { String(cString: $0) } ?? "NetFS mount failed with status \(status)"
             throw MountError.netFSFailed(message)
         }
+    }
+}
+
+public final class FinderNetworkMounter: NetworkMounter {
+    private let executionTimeout: TimeInterval
+
+    public init(executionTimeout: TimeInterval = 10) {
+        self.executionTimeout = executionTimeout
+    }
+
+    public func mount(_ request: MountRequest) throws {
+        let urlString = finderURLString(for: request)
+        let script = """
+        try
+            tell application "Finder"
+                with timeout of 2 seconds
+                    mount volume "\(escapeAppleScriptString(urlString))"
+                end timeout
+            end tell
+        on error errMsg
+            error errMsg
+        end try
+        """
+
+        let process = Process()
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", script]
+        process.standardOutput = stdout
+        process.standardError = stderr
+
+        try process.run()
+
+        let deadline = Date().addingTimeInterval(executionTimeout)
+        while process.isRunning && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+
+        if process.isRunning {
+            process.terminate()
+            process.waitUntilExit()
+            throw MountError.finderFailed("Finder mount timed out")
+        }
+
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            let stderrData = stderr.fileHandleForReading.readDataToEndOfFile()
+            let stdoutData = stdout.fileHandleForReading.readDataToEndOfFile()
+            let message = String(data: stderrData, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .nonEmpty
+                ?? String(data: stdoutData, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .nonEmpty
+                ?? "Finder mount failed"
+            throw MountError.finderFailed(message)
+        }
+    }
+
+    private func finderURLString(for request: MountRequest) -> String {
+        guard let credential = request.credential else {
+            return request.remoteURL.absoluteString
+        }
+
+        var components = URLComponents(url: request.remoteURL, resolvingAgainstBaseURL: false) ?? URLComponents()
+        components.scheme = "smb"
+        components.host = request.remoteURL.host
+        components.percentEncodedPath = request.remoteURL.percentEncodedPath
+        components.percentEncodedUser = credential.account.addingPercentEncoding(withAllowedCharacters: .urlUserAllowed)
+
+        let allowedPassword = CharacterSet.urlPasswordAllowed.subtracting(CharacterSet(charactersIn: ":@"))
+        components.percentEncodedPassword = credential.password.addingPercentEncoding(withAllowedCharacters: allowedPassword)
+
+        return components.string ?? request.remoteURL.absoluteString
+    }
+
+    private func escapeAppleScriptString(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
     }
 }
 
@@ -99,5 +186,11 @@ public final class ShellMountStatusProvider: MountStatusProviding {
             return nil
         }
         return URL(fileURLWithPath: String(suffix[..<typeRange.lowerBound])).standardizedFileURL.path
+    }
+}
+
+private extension String {
+    var nonEmpty: String? {
+        isEmpty ? nil : self
     }
 }

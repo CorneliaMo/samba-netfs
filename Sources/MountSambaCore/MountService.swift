@@ -51,14 +51,14 @@ public final class FileManagerMountPointPreparer: MountPointPreparing {
         do {
             try fileManager.createDirectory(atPath: path, withIntermediateDirectories: true)
         } catch {
-            if Self.shouldLetNetFSCreateVolumesMountPoint(path: path, error: error) {
+            if Self.shouldLetSystemCreateVolumesMountPoint(path: path, error: error) {
                 return
             }
             throw error
         }
     }
 
-    static func shouldLetNetFSCreateVolumesMountPoint(path: String, error: Error) -> Bool {
+    static func shouldLetSystemCreateVolumesMountPoint(path: String, error: Error) -> Bool {
         guard isDirectVolumesChild(path) else {
             return false
         }
@@ -84,6 +84,8 @@ public final class MountService {
     private let mounter: NetworkMounter
     private let credentials: CredentialStore
     private let mountPointPreparer: MountPointPreparing
+    private let verificationTimeout: TimeInterval
+    private let verificationPollInterval: TimeInterval
 
     public init(
         statusProvider: MountStatusProviding,
@@ -95,6 +97,8 @@ public final class MountService {
         self.mounter = mounter
         self.credentials = credentials
         self.mountPointPreparer = FileManagerMountPointPreparer(fileManager: fileManager)
+        self.verificationTimeout = 5
+        self.verificationPollInterval = 0.25
     }
 
     public init(
@@ -107,6 +111,8 @@ public final class MountService {
         self.mounter = mounter
         self.credentials = credentials
         self.mountPointPreparer = mountPointPreparer
+        self.verificationTimeout = 5
+        self.verificationPollInterval = 0.25
     }
 
     public func statuses(for configs: [LoadedConfig]) -> [ShareStatus] {
@@ -133,6 +139,9 @@ public final class MountService {
             let remoteURL = try config.smbURL()
             let credential = try credential(for: config)
             try mounter.mount(MountRequest(remoteURL: remoteURL, mountPoint: config.mountPoint, credential: credential))
+            guard waitUntilMounted(config.mountPoint) else {
+                throw MountError.mountVerificationFailed("mount did not appear at \(config.mountPoint)")
+            }
             return ShareStatus(config: config, status: .mountedNow)
         } catch {
             return ShareStatus(config: config, status: .failed, message: error.localizedDescription)
@@ -147,5 +156,16 @@ public final class MountService {
             throw CredentialError.missing(host: config.host, share: config.share, account: account)
         }
         return Credential(account: account, password: password)
+    }
+
+    private func waitUntilMounted(_ mountPoint: String) -> Bool {
+        let deadline = Date().addingTimeInterval(verificationTimeout)
+        while Date() < deadline {
+            if statusProvider.isMounted(at: mountPoint) {
+                return true
+            }
+            Thread.sleep(forTimeInterval: verificationPollInterval)
+        }
+        return statusProvider.isMounted(at: mountPoint)
     }
 }
