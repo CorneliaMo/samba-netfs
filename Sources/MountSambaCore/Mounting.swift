@@ -120,20 +120,15 @@ public final class FinderNetworkMounter: NetworkMounter {
     }
 
     private func finderURLString(for request: MountRequest) -> String {
+        let path = request.remoteURL.path
+
         guard let credential = request.credential else {
-            return request.remoteURL.absoluteString
+            return "smb://\(request.remoteURL.host ?? "")\(path)"
         }
 
-        var components = URLComponents(url: request.remoteURL, resolvingAgainstBaseURL: false) ?? URLComponents()
-        components.scheme = "smb"
-        components.host = request.remoteURL.host
-        components.percentEncodedPath = components.percentEncodedPath.isEmpty ? request.remoteURL.path : components.percentEncodedPath
-        components.percentEncodedUser = credential.account.addingPercentEncoding(withAllowedCharacters: .urlUserAllowed)
-
-        let allowedPassword = CharacterSet.urlPasswordAllowed.subtracting(CharacterSet(charactersIn: ":@"))
-        components.percentEncodedPassword = credential.password.addingPercentEncoding(withAllowedCharacters: allowedPassword)
-
-        return components.string ?? request.remoteURL.absoluteString
+        let encodedUser = credential.account.addingPercentEncoding(withAllowedCharacters: .urlUserAllowed) ?? credential.account
+        let encodedPassword = credential.password.addingPercentEncoding(withAllowedCharacters: .urlPasswordAllowed) ?? credential.password
+        return "smb://\(encodedUser):\(encodedPassword)@\(request.remoteURL.host ?? "")\(path)"
     }
 
     private func escapeAppleScriptString(_ value: String) -> String {
