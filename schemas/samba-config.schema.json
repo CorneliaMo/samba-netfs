@@ -1,12 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/CorneliaMo/samba-netfs/master/schemas/samba-config.schema.json",
-  "title": "SambaNetFS Share Configuration",
-  "description": "A single SMB/Samba share configuration for the mount-samba CLI.",
+  "title": "FinderAutoMount Share Configuration",
+  "description": "A single network share configuration for the mount-samba CLI.",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "name",
+    "protocol",
     "host",
     "share",
     "pollIntervalSeconds",
@@ -22,10 +23,20 @@
       "minLength": 1,
       "description": "Friendly display name shown by mount-samba."
     },
+    "protocol": {
+      "type": "string",
+      "enum": [
+        "smb",
+        "nfs",
+        "http",
+        "https"
+      ],
+      "description": "Network protocol used to build the mount URL."
+    },
     "host": {
       "type": "string",
       "minLength": 1,
-      "description": "SMB server host name or IP address.",
+      "description": "Server host name or IP address.",
       "examples": [
         "nas.local",
         "192.0.2.10"
@@ -34,7 +45,7 @@
     "share": {
       "type": "string",
       "minLength": 1,
-      "description": "SMB share name.",
+      "description": "Share or root path segment.",
       "examples": [
         "media",
         "documents"
@@ -64,7 +75,7 @@
     "account": {
       "type": "string",
       "minLength": 1,
-      "description": "Optional Keychain account name. Omit for guest or anonymous SMB behavior."
+      "description": "Optional Keychain account name. Omit for guest or anonymous behavior."
     }
   }
 }

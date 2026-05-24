@@ -1,6 +1,7 @@
 {
   "$schema": "../schemas/samba-config.schema.json",
   "name": "Media NAS",
+  "protocol": "smb",
   "host": "nas.local",
   "share": "media",
   "path": "tv",

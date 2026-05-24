@@ -17,7 +17,7 @@ public struct ShareStatus: Codable, Equatable, Sendable {
     public let status: ShareMountStatus
     public let message: String?
 
-    public init(config: SambaConfig, status: ShareMountStatus, message: String? = nil) {
+    public init(config: MountConfig, status: ShareMountStatus, message: String? = nil) {
         name = config.name
         address = config.address
         mountPoint = config.mountPoint
@@ -129,14 +129,14 @@ public final class MountService {
     }
 
     @discardableResult
-    public func mount(_ config: SambaConfig) -> ShareStatus {
+    public func mount(_ config: MountConfig) -> ShareStatus {
         if statusProvider.isMounted(at: config.mountPoint) {
             return ShareStatus(config: config, status: .alreadyMounted)
         }
 
         do {
             try mountPointPreparer.prepareMountPoint(config.mountPoint)
-            let remoteURL = try config.smbURL()
+            let remoteURL = try config.remoteURL()
             let credential = try credential(for: config)
             try mounter.mount(MountRequest(remoteURL: remoteURL, mountPoint: config.mountPoint, credential: credential))
             guard waitUntilMounted(config.mountPoint) else {
@@ -148,7 +148,7 @@ public final class MountService {
         }
     }
 
-    private func credential(for config: SambaConfig) throws -> Credential? {
+    private func credential(for config: MountConfig) throws -> Credential? {
         guard let account = config.account, !account.isEmpty else {
             return nil
         }

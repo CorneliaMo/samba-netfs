@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "SambaNetFS",
+    name: "FinderAutoMount",
     platforms: [
         .macOS(.v13)
     ],
@@ -15,16 +15,7 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "CNetFS",
-            publicHeadersPath: "include",
-            linkerSettings: [
-                .linkedFramework("CoreFoundation", .when(platforms: [.macOS])),
-                .linkedFramework("NetFS", .when(platforms: [.macOS]))
-            ]
-        ),
-        .target(
             name: "MountSambaCore",
-            dependencies: ["CNetFS"],
             linkerSettings: [
                 .linkedFramework("Security", .when(platforms: [.macOS]))
             ]

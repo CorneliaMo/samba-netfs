@@ -1,7 +1,15 @@
 import Foundation
 
-public struct SambaConfig: Codable, Equatable, Sendable {
+public enum ShareProtocol: String, Codable, CaseIterable, Sendable {
+    case smb
+    case nfs
+    case http
+    case https
+}
+
+public struct MountConfig: Codable, Equatable, Sendable {
     public let name: String
+    public let mountProtocol: ShareProtocol
     public let host: String
     public let share: String
     public let path: String?
@@ -11,6 +19,7 @@ public struct SambaConfig: Codable, Equatable, Sendable {
 
     public init(
         name: String,
+        mountProtocol: ShareProtocol,
         host: String,
         share: String,
         path: String? = nil,
@@ -19,6 +28,7 @@ public struct SambaConfig: Codable, Equatable, Sendable {
         account: String? = nil
     ) {
         self.name = name
+        self.mountProtocol = mountProtocol
         self.host = host
         self.share = share
         self.path = path
@@ -26,13 +36,36 @@ public struct SambaConfig: Codable, Equatable, Sendable {
         self.mountPoint = mountPoint
         self.account = account
     }
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case mountProtocol = "protocol"
+        case host
+        case share
+        case path
+        case pollIntervalSeconds
+        case mountPoint
+        case account
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        mountProtocol = try container.decode(ShareProtocol.self, forKey: .mountProtocol)
+        host = try container.decode(String.self, forKey: .host)
+        share = try container.decode(String.self, forKey: .share)
+        path = try container.decodeIfPresent(String.self, forKey: .path)
+        pollIntervalSeconds = try container.decode(Int.self, forKey: .pollIntervalSeconds)
+        mountPoint = try container.decode(String.self, forKey: .mountPoint)
+        account = try container.decodeIfPresent(String.self, forKey: .account)
+    }
 }
 
 public struct LoadedConfig: Equatable, Sendable {
     public let fileURL: URL
-    public let config: SambaConfig
+    public let config: MountConfig
 
-    public init(fileURL: URL, config: SambaConfig) {
+    public init(fileURL: URL, config: MountConfig) {
         self.fileURL = fileURL
         self.config = config
     }
@@ -97,9 +130,9 @@ public final class ConfigLoader {
         return try files.map { fileURL in
             do {
                 let data = try Data(contentsOf: fileURL)
-                let config = try decoder.decode(SambaConfig.self, from: data)
+                let config = try decoder.decode(MountConfig.self, from: data)
                 try config.validate(sourceURL: fileURL)
-                _ = try config.smbURL()
+                _ = try config.remoteURL()
                 return LoadedConfig(fileURL: fileURL, config: config)
             } catch let error as ConfigError {
                 throw error
@@ -110,7 +143,7 @@ public final class ConfigLoader {
     }
 }
 
-public extension SambaConfig {
+public extension MountConfig {
     func validate(sourceURL: URL? = nil) throws {
         let errorURL = sourceURL ?? URL(fileURLWithPath: name.isEmpty ? "<config>" : name)
         if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -130,9 +163,9 @@ public extension SambaConfig {
         }
     }
 
-    func smbURL() throws -> URL {
+    func remoteURL() throws -> URL {
         var components = URLComponents()
-        components.scheme = "smb"
+        components.scheme = mountProtocol.rawValue
         components.host = host
 
         var pathComponents = [share]
@@ -142,13 +175,13 @@ public extension SambaConfig {
         components.percentEncodedPath = "/" + pathComponents.map(Self.encodePathComponent).joined(separator: "/")
 
         guard let url = components.url else {
-            throw ConfigError.invalid(URL(fileURLWithPath: name), "invalid SMB URL")
+            throw ConfigError.invalid(URL(fileURLWithPath: name), "invalid URL")
         }
         return url
     }
 
     var address: String {
-        var result = "\(host)/\(share)"
+        var result = "\(mountProtocol.rawValue)://\(host)/\(share)"
         if let path, !path.isEmpty {
             result += "/\(path)"
         }

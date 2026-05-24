@@ -12,7 +12,7 @@ import Glibc
 struct MountSamba: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "mount-samba",
-        abstract: "Mount SMB/Samba shares using macOS system mount services.",
+        abstract: "Mount network shares using macOS system mount services.",
         subcommands: [
             Show.self,
             Mount.self,
@@ -27,7 +27,7 @@ struct MountSamba: ParsableCommand {
 }
 
 struct ConfigOptions: ParsableArguments {
-    @Option(name: .long, help: "Directory containing one JSON config file per Samba share.")
+    @Option(name: .long, help: "Directory containing one JSON config file per network share.")
     var configDir: String?
 
     var directoryURL: URL {
@@ -137,10 +137,10 @@ struct SetCredential: ParsableCommand {
         abstract: "Store or update a Keychain password for a configured share."
     )
 
-    @Option(help: "Samba host.")
+    @Option(help: "Server host.")
     var host: String
 
-    @Option(help: "Samba share.")
+    @Option(help: "Share or root path segment.")
     var share: String
 
     @Option(help: "Account name.")

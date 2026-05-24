@@ -1,12 +1,12 @@
-# SambaNetFS
+# FinderAutoMount
 
-`SambaNetFS` is a macOS command-line tool for mounting SMB/Samba shares through macOS system mount services.
+`FinderAutoMount` is a macOS command-line tool for mounting network shares through Finder's native mount flow.
 
-The executable is named `mount-samba`. It has no GUI, reads one JSON config file per share, can mount all configured shares once, can keep polling and remounting shares, and can report current mount status.
+The executable is currently named `mount-samba` for compatibility. It has no GUI, reads one JSON config file per share, can mount all configured shares once, can keep polling and remounting shares, and can report current mount status.
 
 ## Features
 
-- Mount SMB/Samba shares through Finder's native SMB mount flow
+- Mount network shares through Finder's native mount flow
 - Store passwords in the macOS Keychain
 - Keep share configs as simple JSON files
 - Mount every configured share in a single command
@@ -19,7 +19,7 @@ The executable is named `mount-samba`. It has no GUI, reads one JSON config file
 - macOS 13 or later
 - Swift 5.9 or later
 
-Real mounting and Keychain access are macOS-only because the project depends on macOS SMB services and `Security.framework`.
+Real mounting and Keychain access are macOS-only because the project depends on macOS mount services and `Security.framework`.
 
 ## Build
 
@@ -57,12 +57,13 @@ mount-samba mount --config-dir /path/to/configs
 mount-samba run --config-dir /path/to/configs
 ```
 
-Create one `.json` file per Samba share:
+Create one `.json` file per network share:
 
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/CorneliaMo/samba-netfs/master/schemas/samba-config.schema.json",
   "name": "Media NAS",
+  "protocol": "smb",
   "host": "nas.local",
   "share": "media",
   "path": "optional/subdir",
@@ -75,17 +76,20 @@ Create one `.json` file per Samba share:
 Required fields:
 
 - `name`: friendly display name
-- `host`: SMB server host name or IP address
-- `share`: SMB share name
+- `protocol`: one of `smb`, `nfs`, `http`, or `https`
+- `host`: server host name or IP address
+- `share`: share name or first path segment
 - `pollIntervalSeconds`: per-share polling interval for `run` and `start`
 - `mountPoint`: local directory used as the mount point
 
 Optional fields:
 
-- `path`: subdirectory inside the share
+- `path`: subdirectory or remaining path after `share`
 - `account`: Keychain account name
 
-If `account` is omitted, `mount-samba` does not pass credentials and relies on guest or anonymous SMB behavior.
+The `protocol` field is required. Config files without it are rejected.
+
+If `account` is omitted, `mount-samba` does not pass credentials and relies on guest or anonymous behavior.
 
 An example config is available at [`examples/media-nas.json`](examples/media-nas.json).
 
@@ -156,16 +160,16 @@ The daemon writes:
 ## Behavior
 
 - Missing mount point directories are created automatically.
-- If a direct `/Volumes/<name>` mount point cannot be pre-created because of macOS permissions, `mount-samba` still attempts the system SMB mount flow.
+- If a direct `/Volumes/<name>` mount point cannot be pre-created because of macOS permissions, `mount-samba` still attempts the system mount flow.
 - Already mounted mount points are skipped.
 - A failed share does not stop other shares from being checked or mounted.
 - In polling mode, each config is retried according to its own `pollIntervalSeconds`.
-- Mounts are triggered through Finder's SMB mount behavior and then verified against the mount table.
+- Mounts are triggered through Finder's mount behavior and then verified against the mount table.
 - The most reliable mount point shape for this mode is `/Volumes/<share>`.
 
 ## Development Notes
 
-The test target uses fakes for Keychain and mount status checks. Real SMB mounting still needs manual verification on macOS with a reachable SMB server.
+The test target uses fakes for Keychain and mount status checks. Real mounting still needs manual verification on macOS with a reachable server.
 
 Useful checks:
 

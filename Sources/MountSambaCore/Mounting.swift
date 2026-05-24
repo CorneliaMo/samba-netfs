@@ -1,4 +1,3 @@
-import CNetFS
 import Foundation
 
 public struct MountRequest: Equatable, Sendable {
@@ -22,42 +21,18 @@ public protocol MountStatusProviding {
 }
 
 public enum MountError: LocalizedError, Equatable {
-    case netFSFailed(String)
     case finderFailed(String)
+    case invalidURL(String)
     case mountVerificationFailed(String)
 
     public var errorDescription: String? {
         switch self {
-        case let .netFSFailed(message):
-            return message
         case let .finderFailed(message):
+            return message
+        case let .invalidURL(message):
             return message
         case let .mountVerificationFailed(message):
             return message
-        }
-    }
-}
-
-public final class NetFSNetworkMounter: NetworkMounter {
-    public init() {}
-
-    public func mount(_ request: MountRequest) throws {
-        var errorPointer: UnsafeMutablePointer<CChar>?
-        let status = CNetFSMountURL(
-            request.remoteURL.absoluteString,
-            request.mountPoint,
-            request.credential?.account,
-            request.credential?.password,
-            &errorPointer
-        )
-        defer {
-            if let errorPointer {
-                CNetFSFreeErrorMessage(errorPointer)
-            }
-        }
-        guard status == 0 else {
-            let message = errorPointer.map { String(cString: $0) } ?? "NetFS mount failed with status \(status)"
-            throw MountError.netFSFailed(message)
         }
     }
 }
@@ -70,7 +45,7 @@ public final class FinderNetworkMounter: NetworkMounter {
     }
 
     public func mount(_ request: MountRequest) throws {
-        let urlString = finderURLString(for: request)
+        let urlString = try finderURLString(for: request)
         let script = """
         try
             tell application "Finder"
@@ -119,16 +94,21 @@ public final class FinderNetworkMounter: NetworkMounter {
         }
     }
 
-    private func finderURLString(for request: MountRequest) -> String {
-        let path = request.remoteURL.path
+    private func finderURLString(for request: MountRequest) throws -> String {
+        guard let scheme = request.remoteURL.scheme else {
+            throw MountError.invalidURL("missing URL protocol")
+        }
+        let host = request.remoteURL.host ?? ""
+        let path = URLComponents(url: request.remoteURL, resolvingAgainstBaseURL: false)?.percentEncodedPath
+            ?? request.remoteURL.path
 
         guard let credential = request.credential else {
-            return "smb://\(request.remoteURL.host ?? "")\(path)"
+            return "\(scheme)://\(host)\(path)"
         }
 
         let encodedUser = credential.account.addingPercentEncoding(withAllowedCharacters: .urlUserAllowed) ?? credential.account
         let encodedPassword = credential.password.addingPercentEncoding(withAllowedCharacters: .urlPasswordAllowed) ?? credential.password
-        return "smb://\(encodedUser):\(encodedPassword)@\(request.remoteURL.host ?? "")\(path)"
+        return "\(scheme)://\(encodedUser):\(encodedPassword)@\(host)\(path)"
     }
 
     private func escapeAppleScriptString(_ value: String) -> String {

@@ -11,9 +11,10 @@ final class MountSambaCoreTests: XCTestCase {
         )
     }
 
-    func testValidConfigDecodesAndBuildsSMBURL() throws {
-        let config = SambaConfig(
+    func testValidConfigDecodesAndBuildsRemoteURL() throws {
+        let config = MountConfig(
             name: "Media NAS",
+            mountProtocol: .https,
             host: "nas.local",
             share: "media share",
             path: "tv/season 1",
@@ -24,13 +25,14 @@ final class MountSambaCoreTests: XCTestCase {
 
         try config.validate()
 
-        XCTAssertEqual(config.smbURL().absoluteString, "smb://nas.local/media%20share/tv/season%201")
-        XCTAssertEqual(config.address, "nas.local/media share/tv/season 1")
+        XCTAssertEqual(config.remoteURL().absoluteString, "https://nas.local/media%20share/tv/season%201")
+        XCTAssertEqual(config.address, "https://nas.local/media share/tv/season 1")
     }
 
     func testInvalidConfigThrows() {
-        let config = SambaConfig(
+        let config = MountConfig(
             name: "",
+            mountProtocol: .smb,
             host: "nas.local",
             share: "media",
             pollIntervalSeconds: -1,
@@ -47,6 +49,7 @@ final class MountSambaCoreTests: XCTestCase {
         let valid = """
         {
           "name": "Media",
+          "protocol": "nfs",
           "host": "nas.local",
           "share": "media",
           "pollIntervalSeconds": 30,
@@ -60,6 +63,25 @@ final class MountSambaCoreTests: XCTestCase {
 
         XCTAssertEqual(loaded.count, 1)
         XCTAssertEqual(loaded[0].config.name, "Media")
+        XCTAssertEqual(loaded[0].config.mountProtocol, .nfs)
+    }
+
+    func testConfigLoaderRequiresProtocol() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let valid = """
+        {
+          "name": "Media",
+          "host": "nas.local",
+          "share": "media",
+          "pollIntervalSeconds": 30,
+          "mountPoint": "\(directory.appendingPathComponent("Media").path)"
+        }
+        """
+        try valid.write(to: directory.appendingPathComponent("media.json"), atomically: true, encoding: .utf8)
+
+        XCTAssertThrowsError(try ConfigLoader().load(from: directory))
     }
 
     func testCredentialServiceKey() {
@@ -89,9 +111,12 @@ final class MountSambaCoreTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
 
         let config = sampleConfig(mountPoint: directory.appendingPathComponent("Media").path, account: nil)
-        let mounter = FakeMounter()
+        let statusProvider = FakeStatusProvider()
+        let mounter = FakeMounter { request in
+            statusProvider.mounted.insert(request.mountPoint)
+        }
         let service = MountService(
-            statusProvider: FakeStatusProvider(),
+            statusProvider: statusProvider,
             mounter: mounter,
             credentials: FakeCredentialStore()
         )
@@ -103,27 +128,27 @@ final class MountSambaCoreTests: XCTestCase {
         XCTAssertNil(mounter.requests[0].credential)
     }
 
-    func testVolumesMountPointPermissionErrorFallsThroughToNetFS() {
+    func testVolumesMountPointPermissionErrorFallsThroughToSystemMount() {
         let error = NSError(
             domain: NSCocoaErrorDomain,
             code: CocoaError.fileWriteNoPermission.rawValue
         )
 
         XCTAssertTrue(
-            FileManagerMountPointPreparer.shouldLetNetFSCreateVolumesMountPoint(
+            FileManagerMountPointPreparer.shouldLetSystemCreateVolumesMountPoint(
                 path: "/Volumes/cornelia",
                 error: error
             )
         )
         XCTAssertFalse(
-            FileManagerMountPointPreparer.shouldLetNetFSCreateVolumesMountPoint(
+            FileManagerMountPointPreparer.shouldLetSystemCreateVolumesMountPoint(
                 path: "/tmp/cornelia",
                 error: error
             )
         )
     }
 
-    func testMountPointPreparationErrorFailsBeforeNetFS() {
+    func testMountPointPreparationErrorFailsBeforeMount() {
         let config = sampleConfig(mountPoint: "/tmp/not-allowed", account: nil)
         let mounter = FakeMounter()
         let service = MountService(
@@ -162,9 +187,12 @@ final class MountSambaCoreTests: XCTestCase {
             )
         )
 
-        let mounter = FakeMounter()
+        let statusProvider = FakeStatusProvider()
+        let mounter = FakeMounter { request in
+            statusProvider.mounted.insert(request.mountPoint)
+        }
         let service = MountService(
-            statusProvider: FakeStatusProvider(),
+            statusProvider: statusProvider,
             mounter: mounter,
             credentials: FakeCredentialStore(passwords: [:])
         )
@@ -188,9 +216,10 @@ final class MountSambaCoreTests: XCTestCase {
         name: String = "Media",
         mountPoint: String = "/Volumes/Media",
         account: String? = nil
-    ) -> SambaConfig {
-        SambaConfig(
+    ) -> MountConfig {
+        MountConfig(
             name: name,
+            mountProtocol: .smb,
             host: "nas.local",
             share: "media",
             pollIntervalSeconds: 60,
@@ -210,17 +239,27 @@ final class MountSambaCoreTests: XCTestCase {
 private final class FakeMounter: NetworkMounter {
     private(set) var requests: [MountRequest] = []
     var error: Error?
+    var onMount: ((MountRequest) -> Void)?
+
+    init(onMount: ((MountRequest) -> Void)? = nil) {
+        self.onMount = onMount
+    }
 
     func mount(_ request: MountRequest) throws {
         if let error {
             throw error
         }
         requests.append(request)
+        onMount?(request)
     }
 }
 
-private struct FakeStatusProvider: MountStatusProviding {
+private final class FakeStatusProvider: MountStatusProviding {
     var mounted: Set<String> = []
+
+    init(mounted: Set<String> = []) {
+        self.mounted = mounted
+    }
 
     func isMounted(at mountPoint: String) -> Bool {
         mounted.contains(mountPoint)
